@@ -1,0 +1,113 @@
+:root {
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --text: #111827;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+
+  --primary: #111827;
+  --primaryText: #ffffff;
+
+  --danger: #dc2626;
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue";
+  background: var(--bg);
+  color: var(--text);
+}
+
+a {
+  color: inherit;
+}
+
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 22px 16px;
+}
+
+/* Card */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+}
+
+/* Buttons */
+.btn {
+  padding: 10px 12px;
+  border: none;
+  background: var(--primary);
+  color: var(--primaryText);
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btnGhost {
+  padding: 10px 12px;
+  border: 1px solid var(--primary);
+  background: #fff;
+  color: var(--primary);
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btnDanger {
+  padding: 10px 12px;
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Table */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 12px;
+  font-size: 14px;
+}
+
+.table th {
+  background: #f9fafb;
+  color: #374151;
+  text-align: left;
+  font-weight: 700;
+}
+
+.rating {
+  margin-top: 4px;
+  color: #f59e0b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.table tr:hover td {
+  background: #fafafa;
+}
