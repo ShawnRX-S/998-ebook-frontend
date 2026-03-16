@@ -27,3 +27,8 @@ npm install
 Start development server
 
 npm run dev
+
+## Project Background
+
+This project is part of the 998 privacy-preserving ebook platform research project.  
+The frontend is implemented with Vue3 and designed to integrate with backend cryptographic protocols such as Oblivious Transfer (OT) to enable privacy-preserving digital purchases.
