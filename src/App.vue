@@ -12,16 +12,38 @@
 
         <nav class="nav">
           <router-link class="navLink" to="/books">Books</router-link>
-          <router-link class="navLink" to="/orders">Orders</router-link>
-          <router-link class="navLink" to="/cart">
+          <router-link v-if="!isAdmin" class="navLink" to="/orders">Orders</router-link>
+          <router-link v-if="!isAdmin" class="navLink" to="/cart">
             Cart
             <span class="pill" :class="{ bump: cartBump }">{{ cartCount }}</span>
+          </router-link>
+
+          <router-link
+            v-if="!loggedIn"
+            class="navLink navBtn navBtnPrimary"
+            to="/login"
+          >
+            <UserFilled class="navIcon" />
+            Login
+          </router-link>
+
+          <button v-else class="navLink navBtn navBtnPrimary" type="button" @click="onLogout">
+            Logout
+          </button>
+
+          <router-link
+            v-if="isAdmin"
+            class="navLink navBtn navBtnSuccess"
+            to="/admin/dashboard"
+          >
+            <Setting class="navIcon" />
+            Admin
           </router-link>
         </nav>
       </div>
     </header>
 
-    <main class="page">
+    <main :class="['page', { pageFull: isAdminRoute }]">
       <router-view />
     </main>
   </div>
@@ -29,10 +51,26 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { getCart } from './utils/cartStore'
+import {
+  isAdmin as authIsAdmin,
+  isLoggedIn as authIsLoggedIn,
+  logout as authLogout
+} from './utils/authStore'
+import { useRouter } from 'vue-router'
 
+import { Setting, UserFilled } from '@element-plus/icons-vue'
+
+const router = useRouter()
+const route = useRoute()
 const cartCount = ref(0)
 const cartBump = ref(false)
+const loggedIn = ref(authIsLoggedIn())
+const isAdmin = ref(authIsAdmin())
+
+const isAdminRoute = computed(() => String(route.path || '').startsWith('/admin'))
 
 let timerId = null
 let bumpTimerId = null
@@ -62,17 +100,30 @@ function handleCartUpdated() {
   playCartBump()
 }
 
+function syncAuth() {
+  loggedIn.value = authIsLoggedIn()
+  isAdmin.value = authIsAdmin()
+}
+
+function onLogout() {
+  authLogout()
+  router.push('/login')
+}
+
 onMounted(() => {
   refreshCartCount()
+  syncAuth()
 
   timerId = setInterval(refreshCartCount, 500)
   window.addEventListener('cart-updated', handleCartUpdated)
+  window.addEventListener('auth-changed', syncAuth)
 })
 
 onUnmounted(() => {
   if (timerId) clearInterval(timerId)
   if (bumpTimerId) clearTimeout(bumpTimerId)
   window.removeEventListener('cart-updated', handleCartUpdated)
+  window.removeEventListener('auth-changed', syncAuth)
 })
 </script>
 
@@ -83,7 +134,7 @@ onUnmounted(() => {
   z-index: 10;
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
 }
 
 .topbarInner {
@@ -122,7 +173,7 @@ onUnmounted(() => {
 .logoSub {
   margin-top: 2px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--muted);
 }
 
 .nav {
@@ -133,10 +184,11 @@ onUnmounted(() => {
 
 .navLink {
   text-decoration: none;
-  color: #111827;
+  color: var(--text);
   padding: 8px 10px;
   border-radius: 10px;
   font-weight: 700;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease;
 }
 
 .navLink:hover {
@@ -144,16 +196,16 @@ onUnmounted(() => {
 }
 
 .navLink.router-link-active {
-  background: #111827;
-  color: #fff;
+  background: var(--primary);
+  color: var(--primaryText);
 }
 
 .pill {
   margin-left: 6px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #111827;
-  color: #fff;
+  background: var(--primary);
+  color: var(--primaryText);
   font-size: 12px;
   font-weight: 800;
   display: inline-block;
@@ -162,6 +214,52 @@ onUnmounted(() => {
 
 .pill.bump {
   transform: scale(1.22);
-  background: #2563eb;
+  background: var(--accent);
+}
+
+.navBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+}
+
+.navIcon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+}
+
+.navBtnPrimary {
+  background: var(--accent);
+  color: var(--primaryText);
+}
+
+.navBtnSuccess {
+  background: var(--success);
+  color: var(--primaryText);
+}
+
+.navBtnPrimary:hover {
+  background: var(--accentHover);
+}
+
+.navBtnSuccess:hover {
+  background: var(--successHover);
+}
+
+.navBtnPrimary.router-link-active {
+  background: var(--accent);
+  color: var(--primaryText);
+}
+
+.navBtnSuccess.router-link-active {
+  background: var(--success);
+  color: var(--primaryText);
+}
+
+.navBtn.router-link-active {
+  color: #fff;
 }
 </style>

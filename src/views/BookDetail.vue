@@ -1,10 +1,11 @@
 <template>
   <div class="container" v-if="book">
-    <div class="detailGrid">
-      <!-- Left -->
-      <div class="left card">
+    <button class="backLink" type="button" @click="goBack">← Back to Books</button>
+
+    <div class="book-card card">
+      <div class="cover-column">
         <div class="coverWrap">
-          <div class="badge" v-if="book.category">{{ book.category }}</div>
+          <div class="badge" v-if="book.isPrivacyProtected">Privacy Protected</div>
 
           <div class="cover" :class="coverClass(book.category)">
             <div class="coverTop">EBOOK</div>
@@ -14,38 +15,94 @@
         </div>
       </div>
 
-      <!-- Right -->
-      <div class="right card">
+      <div class="details-column">
+        <div class="rightTop">
+          <h1 class="title">{{ book.title }}</h1>
 
-        <h1 class="title">{{ book.title }}</h1>
-        <div class="author">by {{ book.author }}</div>
-
-        <div class="metaRow">
-          <span class="tag">{{ book.category }}</span>
-          <span class="price">${{ book.price }}</span>
+          <div class="subTop">
+            <div class="author">by {{ book.author }}</div>
+          </div>
         </div>
 
-        <div class="ratingRow">
-          <span class="stars">★★★★★</span>
-          <span class="ratingText">{{ book.rating }}</span>
+        <div class="keyRow">
+          <div class="priceWrap">
+            <div class="price">
+              <el-icon class="securityBadge" aria-label="Security badge">
+                <Lock />
+              </el-icon>
+              ${{ book.price }}
+            </div>
+            <div class="priceHint">Secure, privacy-preserving delivery</div>
+          </div>
+
+          <div class="ratingRow" aria-label="Rating">
+            <span class="stars" aria-hidden="true">★★★★★</span>
+            <span class="ratingText">{{ book.rating }}</span>
+          </div>
         </div>
 
         <div class="desc">
-          <h3>About this book</h3>
-          <p>{{ book.summary }}</p>
+          <div class="descTitle">About this book</div>
+          <p class="descText">{{ book.description || book.summary }}</p>
         </div>
 
-        <div class="actions">
-          <button class="btnGhost" @click="goBack">Back</button>
-          <button class="btnGhost" @click="addCart">Add to Cart</button>
-          <button class="btn" @click="buyNow">Buy Now</button>
+        <div class="bottomActions">
+          <template v-if="!adminMode">
+            <button class="btn ctaPrimary" @click="buyNow">Buy Now (Simulated)</button>
+            <button class="btnGhost ctaSecondary" @click="addCart">Add to Cart</button>
+
+            <div class="securityInfo">
+              <div class="securityTitle">Security Info</div>
+              <div class="securityBody">
+                This purchase is simulated. In the final system, the backend OT module can deliver
+                your ebook while preserving user privacy (minimizing what the server learns about
+                your reading choices).
+              </div>
+            </div>
+
+            <div class="callout calloutSmall simNote">
+              “Buy Now” is simulated. In the final system the backend OT module will deliver the ebook
+              while preserving user privacy.
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="callout calloutSmall simNote">
+              Purchase actions are disabled for admin accounts.
+            </div>
+          </template>
         </div>
+      </div>
+    </div>
 
-        <p class="note">
-          “Buy Now” is simulated. In the final system the backend OT module
-          will deliver the ebook while preserving user privacy.
-        </p>
+    <div class="recommended card">
+      <div class="recHeader">
+        <div class="recTitle">Recommended for you</div>
+        <div class="recSub">More privacy and security reads</div>
+      </div>
 
+      <div class="recScroll" aria-label="Recommended books">
+        <button
+          v-for="b in recommendedBooks"
+          :key="b.id"
+          class="recCard"
+          type="button"
+          @click="goToBook(b.id)"
+        >
+          <div class="recCover" :class="coverClass(b.category)">
+            <div class="recCoverTop">EBOOK</div>
+            <div class="recCoverCode">{{ b.coverText || shortCode(b.title) }}</div>
+          </div>
+
+          <div class="recMeta">
+            <div class="recName">{{ b.title }}</div>
+            <div class="recAuthor">by {{ b.author }}</div>
+            <div class="recBottom">
+              <span v-if="b.isPrivacyProtected" class="chip recChip">Privacy Protected</span>
+              <span class="recPrice">${{ b.price }}</span>
+            </div>
+          </div>
+        </button>
       </div>
     </div>
   </div>
@@ -60,46 +117,76 @@
 </template>
 
 <script setup>
+import { computed, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { books } from '../data/books'
+import { ElMessage } from 'element-plus'
+import { Lock } from '@element-plus/icons-vue'
 import { addToCart as addToCartStore, clearCart } from '../utils/cartStore'
 import { addOrder } from '../utils/orderStore'
+import { isAdmin, isLoggedIn } from '../utils/authStore'
+import { useBooks } from '../utils/bookStore'
 
 const route = useRoute()
 const router = useRouter()
 
 const id = Number(route.params.id)
-const book = books.find((b) => b.id === id)
+const { books: booksRef, stop: stopBooksSync } = useBooks()
+const book = computed(() => booksRef.value.find((b) => b.id === id) || null)
+const adminMode = isAdmin()
+
+const recommendedBooks = computed(() => booksRef.value.filter((b) => b.id !== id).slice(0, 4))
 
 function goBack() {
   router.push('/books')
 }
 
+function goToBook(bookId) {
+  router.push(`/books/${bookId}`)
+}
+
 function addCart() {
+  if (adminMode) {
+    ElMessage.warning('Admin account cannot add items to cart')
+    return
+  }
+
+  if (!isLoggedIn()) {
+    ElMessage.warning('Please login first!')
+    router.push('/login')
+    return
+  }
+
   addToCartStore({
-    bookId: book.id,
-    title: book.title,
-    price: book.price,
+    bookId: book.value.id,
+    title: book.value.title,
+    price: book.value.price,
     qty: 1
   })
 
-  alert('Added to cart: ' + book.title)
+  alert('Added to cart: ' + book.value.title)
 }
 
 function buyNow() {
+  if (adminMode) {
+    ElMessage.warning('Admin account cannot place purchase orders')
+    return
+  }
+
+  if (!book.value) return
+
   const order = {
     orderId: 'ORD-' + Date.now(),
     time: new Date().toLocaleString(),
     status: 'PAID',
     items: [
       {
-        bookId: book.id,
-        title: book.title,
-        price: book.price,
+        bookId: book.value.id,
+        title: book.value.title,
+        price: book.value.price,
         qty: 1
       }
     ],
-    total: Number(book.price)
+    total: Number(book.value.price)
   }
 
   addOrder(order)
@@ -125,27 +212,56 @@ function coverClass(categoryName) {
   if (categoryName === 'Systems') return 'coverSystems'
   return 'coverDefault'
 }
+
+onBeforeUnmount(() => {
+  stopBooksSync?.()
+})
 </script>
 
-<style>
+<style scoped>
 .container {
-  max-width: 1040px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
-.detailGrid {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 22px;
+.backLink {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  padding: 8px 0;
+  cursor: pointer;
+  transition: color 0.18s ease, transform 0.12s ease;
 }
 
-.left,
-.right {
-  padding: 18px;
+.backLink:hover {
+  color: var(--text);
+}
+
+.book-card {
+  width: 100%;
+  max-width: 1200px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  align-items: stretch;
+}
+
+.cover-column {
+  padding: 0;
+}
+
+.details-column {
+  padding: 48px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .coverWrap {
   position: relative;
+  height: 100%;
 }
 
 .badge {
@@ -163,13 +279,17 @@ function coverClass(categoryName) {
 }
 
 .cover {
-  height: 420px;
-  border-radius: 18px;
+  aspect-ratio: 3 / 4;
+  min-height: 520px;
+  border-radius: 22px;
   padding: 18px;
   color: #fff;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  box-shadow: 0 22px 55px rgba(15, 23, 42, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  margin: 48px;
 }
 
 .coverTop {
@@ -180,7 +300,7 @@ function coverClass(categoryName) {
 }
 
 .coverCode {
-  font-size: 72px;
+  font-size: 84px;
   font-weight: 800;
   line-height: 1;
 }
@@ -224,58 +344,65 @@ function coverClass(categoryName) {
 
 .title {
   margin: 0;
-  font-size: 26px;
-  line-height: 1.3;
+  font-size: 2.5rem;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
 
 .author {
-  margin-top: 8px;
+  margin-top: 0;
   color: #6b7280;
   font-size: 15px;
 }
 
-.metaRow {
-  margin-top: 14px;
+.subTop {
+  margin-top: 10px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
-.tag {
-  padding: 6px 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 999px;
-  background: #f9fafb;
-  font-size: 13px;
-  color: #374151;
+.keyRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
 .desc {
-  margin-top: 18px;
-  padding: 16px;
-  border-radius: 12px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-}
-
-.desc h3 {
-  margin-bottom: 8px;
-}
-
-.desc p {
-  line-height: 1.7;
-  color: #374151;
+  min-width: 0;
 }
 
 .price {
-  font-size: 28px;
-  font-weight: 800;
-  color: #111827;
+  font-size: 30px;
+  font-weight: 900;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.priceWrap {
+  display: grid;
+  gap: 6px;
+}
+
+.priceHint {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.securityBadge {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+  flex: 0 0 auto;
 }
 
 .ratingRow {
-  margin-top: 12px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -288,40 +415,181 @@ function coverClass(categoryName) {
   letter-spacing: 1px;
 }
 
-.desc {
-  margin-top: 18px;
-}
-
-.cardSoft {
-  padding: 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  background: #fafafa;
-}
-
-.desc h3 {
+.descTitle {
+  font-weight: 900;
   margin: 0 0 10px 0;
   font-size: 18px;
 }
 
-.desc p {
+.descText {
   margin: 0;
   line-height: 1.8;
   color: #374151;
+  font-size: 14px;
 }
 
-.actions {
-  margin-top: 18px;
+.bottomActions {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.ctaRow {
+  display: flex;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
-.note {
-  margin-top: 14px;
-  color: #6b7280;
+.ctaRow .ctaPrimary {
+  flex: 1 1 220px;
+}
+
+.ctaRow .ctaSecondary {
+  flex: 0 1 220px;
+}
+
+.ctaPrimary {
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+
+.ctaSecondary {
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+
+.simNote {
+  margin-top: 4px;
+}
+
+.securityInfo {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.06), rgba(255, 255, 255, 0.8));
+}
+
+.securityTitle {
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.securityBody {
+  color: #374151;
+  line-height: 1.75;
+}
+
+.recommended {
+  margin-top: 22px;
+  padding: 28px;
+}
+
+.recHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.recTitle {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.recSub {
+  color: var(--muted);
   font-size: 13px;
-  line-height: 1.6;
+  font-weight: 600;
+}
+
+.recScroll {
+  margin-top: 16px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 280px);
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x mandatory;
+}
+
+.recCard {
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 16px;
+  padding: 14px;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.18s ease, border-color 0.18s ease,
+    background 0.18s ease;
+  scroll-snap-align: start;
+}
+
+.recCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(37, 99, 235, 0.25);
+  box-shadow: var(--shadow-md);
+  background: var(--cardHover);
+}
+
+.recCover {
+  border-radius: 14px;
+  aspect-ratio: 3 / 4;
+  min-height: 170px;
+  padding: 12px;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+}
+
+.recCoverTop {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  opacity: 0.9;
+}
+
+.recCoverCode {
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.recMeta {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.recName {
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.recAuthor {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.recChip {
+  padding: 5px 10px;
+}
+
+.recPrice {
+  font-weight: 900;
 }
 
 .notFound {
@@ -329,20 +597,29 @@ function coverClass(categoryName) {
 }
 
 @media (max-width: 900px) {
-  .detailGrid {
+  .book-card {
     grid-template-columns: 1fr;
   }
 
   .cover {
-    height: 300px;
+    min-height: 320px;
+    margin: 24px;
   }
 
   .coverCode {
-    font-size: 54px;
+    font-size: 64px;
   }
 
   .title {
-    font-size: 24px;
+    font-size: 26px;
+  }
+
+  .details-column {
+    padding: 24px;
+  }
+
+  .ctaRow {
+    flex-direction: column;
   }
 }
 </style>

@@ -68,7 +68,7 @@
 
     <div class="grid">
       <div class="card bookCard" v-for="b in pagedList" :key="b.id">
-        <div class="badge" v-if="b.category">{{ b.category }}</div>
+        <div class="badge" v-if="b.isPrivacyProtected">Privacy Protected</div>
 
         <div class="cover" :class="coverClass(b.category)">
           <div class="coverTop">EBOOK</div>
@@ -78,20 +78,22 @@
 
         <h3 class="title">{{ b.title }}</h3>
         <div class="rating">
-        ⭐ {{ b.rating }}
+          ⭐ {{ b.rating }}
         </div>
         <p class="meta">Author: {{ b.author }}</p>
         <p class="meta">Price: ${{ b.price }}</p>
-        <p class="summary">{{ b.summary }}</p>
+        <p class="summary">{{ b.description || b.summary }}</p>
 
         <div class="actions">
-          <button class="btnGhost" @click="goDetail(b.id)">
-            View Detail
-          </button>
+          <button class="btnGhost" @click="goDetail(b.id)">View Detail</button>
 
-          <button class="btn" @click="addToCart(b)">
+          <el-button v-if="!adminMode" type="success" :icon="ShoppingCart" @click="addToCart(b)">
             Add to Cart
-          </button>
+          </el-button>
+
+          <el-button v-if="b.isPrivacyProtected" type="primary" @click="privacyEncryptTest(b)">
+            Privacy Encryption Test
+          </el-button>
         </div>
       </div>
     </div>
@@ -122,13 +124,23 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
-import { books } from '../data/books'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
+import { ShoppingCart } from '@element-plus/icons-vue'
 import { addToCart as addToCartStore } from '../utils/cartStore'
+import { aesEncryptString } from '../utils/cryptoHelper'
+import { isAdmin, isLoggedIn } from '../utils/authStore'
+import { useBooks } from '../utils/bookStore'
 
 const router = useRouter()
-const list = books
+const { books: booksRef, stop: stopBooksSync } = useBooks()
+const list = computed(() => booksRef.value || [])
+const adminMode = isAdmin()
+
+// Demo-only passphrase for encrypting book title payloads.
+// In the real system, the secret should come from backend / key management.
+const AES_SECRET = 'ebook-privacy-demo-secret'
 
 const keyword = ref('')
 const category = ref('ALL')
@@ -139,7 +151,7 @@ const pageSize = ref(9)
 
 const categories = computed(() => {
   const set = new Set()
-  list.forEach((b) => {
+  list.value.forEach((b) => {
     if (b.category) set.add(b.category)
   })
   return Array.from(set).sort()
@@ -148,12 +160,12 @@ const categories = computed(() => {
 const filteredSorted = computed(() => {
   const k = keyword.value.trim().toLowerCase()
 
-  const filtered = list.filter((b) => {
+  const filtered = list.value.filter((b) => {
     if (category.value !== 'ALL' && b.category !== category.value) return false
     if (!k) return true
     const t = (b.title || '').toLowerCase()
     const a = (b.author || '').toLowerCase()
-    const s = (b.summary || '').toLowerCase()
+    const s = (b.description || b.summary || '').toLowerCase()
     return t.includes(k) || a.includes(k) || s.includes(k)
   })
 
@@ -182,6 +194,17 @@ function goDetail(id) {
 }
 
 function addToCart(book) {
+  if (adminMode) {
+    ElMessage.warning('Admin account cannot add items to cart')
+    return
+  }
+
+  if (!isLoggedIn()) {
+    ElMessage.warning('Please login first!')
+    router.push('/login')
+    return
+  }
+
   addToCartStore({
     bookId: book.id,
     title: book.title,
@@ -190,6 +213,22 @@ function addToCart(book) {
   })
 
   alert('Added to cart: ' + book.title)
+}
+
+function privacyEncryptTest(book) {
+  if (!book?.isPrivacyProtected) {
+    ElMessage.error('Standard Mode: Encryption is disabled for this item.')
+    return
+  }
+
+  const cipherText = aesEncryptString(book.title, AES_SECRET)
+  ElMessage({
+    type: 'success',
+    showClose: true,
+    duration: 5000,
+    // Encryption result display (demo)
+    message: `Encryption result (AES): ${cipherText}`
+  })
 }
 
 function setCategory(c) {
@@ -275,9 +314,13 @@ watch([keyword, category, sortBy, pageSize], () => {
 watch(totalPages, (n) => {
   if (page.value > n) page.value = n
 })
+
+onBeforeUnmount(() => {
+  stopBooksSync?.()
+})
 </script>
 
-<style>
+<style scoped>
 .container {
   max-width: 1040px;
   margin: 0 auto;
@@ -375,24 +418,29 @@ watch(totalPages, (n) => {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 32px;
   margin-top: 10px;
 }
 
 .bookCard {
   position: relative;
   padding: 16px;
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid transparent;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
 }
 
 .bookCard:hover {
   transform: translateY(-6px);
   box-shadow: 0 18px 35px rgba(0, 0, 0, 0.08);
+  border-color: rgba(37, 99, 235, 0.35);
 }
 
 .cover {
-  height: 120px;
+  aspect-ratio: 3 / 2;
+  max-height: 170px;
   border-radius: 14px;
   margin-bottom: 12px;
   padding: 12px;
@@ -484,12 +532,14 @@ watch(totalPages, (n) => {
   font-size: 13px;
   line-height: 1.5;
   min-height: 40px;
+  flex: 1 1 auto;
 }
 
 .actions {
   margin-top: 12px;
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .actions .btn,
@@ -557,7 +607,8 @@ watch(totalPages, (n) => {
   }
 
   .grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   }
 }
 </style>
+
