@@ -57,8 +57,8 @@
 
     <div class="resultRow">
       <div class="resultText">
-        Showing <b>{{ pagedList.length }}</b> of <b>{{ filteredSorted.length }}</b>
-        (Total: {{ list.length }})
+        Showing <b>{{ pagedList.length }}</b> of <b>{{ totalCount }}</b>
+        (Total: {{ totalCount }})
       </div>
 
       <div class="pageText" v-if="totalPages > 1">
@@ -98,7 +98,7 @@
       </div>
     </div>
 
-    <div v-if="filteredSorted.length === 0" class="empty">
+    <div v-if="pagedList.length === 0" class="empty">
       No matching books. Try another keyword/category.
     </div>
 
@@ -124,18 +124,17 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { ShoppingCart } from '@element-plus/icons-vue'
 import { addToCart as addToCartStore } from '../utils/cartStore'
 import { aesEncryptString } from '../utils/cryptoHelper'
 import { isAdmin, isLoggedIn } from '../utils/authStore'
-import { useBooks } from '../utils/bookStore'
+import { getBooks } from '../api/books'
 
 const router = useRouter()
-const { books: booksRef, stop: stopBooksSync } = useBooks()
-const list = computed(() => booksRef.value || [])
+const list = ref([])
 const adminMode = isAdmin()
 
 // Demo-only passphrase for encrypting book title payloads.
@@ -148,6 +147,20 @@ const sortBy = ref('NONE')
 
 const page = ref(1)
 const pageSize = ref(9)
+const totalCount = ref(0)
+
+async function loadBooks() {
+  const res = await getBooks({
+    page: page.value,
+    pageSize: pageSize.value,
+    category: category.value,
+    keyword: keyword.value,
+    sort: sortBy.value
+  })
+
+  list.value = res.list
+  totalCount.value = res.total
+}
 
 const categories = computed(() => {
   const set = new Set()
@@ -157,37 +170,12 @@ const categories = computed(() => {
   return Array.from(set).sort()
 })
 
-const filteredSorted = computed(() => {
-  const k = keyword.value.trim().toLowerCase()
-
-  const filtered = list.value.filter((b) => {
-    if (category.value !== 'ALL' && b.category !== category.value) return false
-    if (!k) return true
-    const t = (b.title || '').toLowerCase()
-    const a = (b.author || '').toLowerCase()
-    const s = (b.description || b.summary || '').toLowerCase()
-    return t.includes(k) || a.includes(k) || s.includes(k)
-  })
-
-  const arr = filtered.slice()
-  if (sortBy.value === 'PRICE_ASC') {
-    arr.sort((x, y) => Number(x.price) - Number(y.price))
-  } else if (sortBy.value === 'PRICE_DESC') {
-    arr.sort((x, y) => Number(y.price) - Number(x.price))
-  }
-  return arr
-})
-
 const totalPages = computed(() => {
-  const n = Math.ceil(filteredSorted.value.length / Number(pageSize.value))
+  const n = Math.ceil(totalCount.value / Number(pageSize.value))
   return n <= 0 ? 1 : n
 })
 
-const pagedList = computed(() => {
-  const size = Number(pageSize.value)
-  const start = (page.value - 1) * size
-  return filteredSorted.value.slice(start, start + size)
-})
+const pagedList = computed(() => list.value)
 
 function goDetail(id) {
   router.push('/books/' + id)
@@ -307,16 +295,17 @@ function coverClass(categoryName) {
   return 'coverDefault'
 }
 
-watch([keyword, category, sortBy, pageSize], () => {
+watch([keyword, category, sortBy, pageSize], async () => {
   page.value = 1
+  await loadBooks()
 })
 
-watch(totalPages, (n) => {
-  if (page.value > n) page.value = n
+watch(page, async () => {
+  await loadBooks()
 })
 
-onBeforeUnmount(() => {
-  stopBooksSync?.()
+onMounted(async () => {
+  await loadBooks()
 })
 </script>
 

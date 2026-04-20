@@ -62,19 +62,19 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { getOrders, clearOrders } from '../utils/orderStore'
+import { ref, onMounted } from 'vue'
+import { getOrderList, clearOrderList } from '../api/orders'
 
-const orders = ref(getOrders())
+const orders = ref([])
 const openId = ref('')
 
-function refresh() {
-  orders.value = getOrders()
+async function refresh() {
+  orders.value = await getOrderList()
 }
 
-function doClear() {
-  clearOrders()
-  refresh()
+async function doClear() {
+  await clearOrderList()
+  await refresh()
   openId.value = ''
 }
 
@@ -85,6 +85,10 @@ function toggle(id) {
 function download(order, item) {
   alert('Simulated download: ' + item.title + ' (Order: ' + order.orderId + ')')
 }
+
+onMounted(async () => {
+  await refresh()
+})
 </script>
 
 <style>

@@ -63,7 +63,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCart, updateQty, removeItem, clearCart } from '../utils/cartStore'
-import { addOrder } from '../utils/orderStore'
+import { createOrder } from '../api/orders'
 
 const router = useRouter()
 const items = ref(getCart())
@@ -91,7 +91,7 @@ function clear() {
   refresh()
 }
 
-function checkout() {
+async function checkout() {
   const cartItems = getCart()
 
   if (cartItems.length === 0) {
@@ -116,7 +116,7 @@ function checkout() {
     total: Number(total.toFixed(2))
   }
 
-  addOrder(order)
+  await createOrder(order)
   clearCart()
   refresh()
   router.push('/orders')

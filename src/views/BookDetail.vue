@@ -117,24 +117,31 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Lock } from '@element-plus/icons-vue'
 import { addToCart as addToCartStore, clearCart } from '../utils/cartStore'
-import { addOrder } from '../utils/orderStore'
+import { createOrder } from '../api/orders'
 import { isAdmin, isLoggedIn } from '../utils/authStore'
-import { useBooks } from '../utils/bookStore'
+import { getBookDetail } from '../api/books'
+import { books } from '../data/books'
 
 const route = useRoute()
 const router = useRouter()
 
-const id = Number(route.params.id)
-const { books: booksRef, stop: stopBooksSync } = useBooks()
-const book = computed(() => booksRef.value.find((b) => b.id === id) || null)
+const bookId = computed(() => Number(route.params.id))
+const book = ref(null)
 const adminMode = isAdmin()
 
-const recommendedBooks = computed(() => booksRef.value.filter((b) => b.id !== id).slice(0, 4))
+async function loadBookDetail() {
+  const res = await getBookDetail(bookId.value)
+  book.value = res
+}
+
+const recommendedBooks = computed(() => {
+  return books.filter((b) => b.id !== bookId.value).slice(0, 4)
+})
 
 function goBack() {
   router.push('/books')
@@ -145,6 +152,8 @@ function goToBook(bookId) {
 }
 
 function addCart() {
+  if (!book.value) return
+
   if (adminMode) {
     ElMessage.warning('Admin account cannot add items to cart')
     return
@@ -166,7 +175,7 @@ function addCart() {
   alert('Added to cart: ' + book.value.title)
 }
 
-function buyNow() {
+async function buyNow() {
   if (adminMode) {
     ElMessage.warning('Admin account cannot place purchase orders')
     return
@@ -189,7 +198,7 @@ function buyNow() {
     total: Number(book.value.price)
   }
 
-  addOrder(order)
+  await createOrder(order)
   clearCart()
   router.push('/orders')
 }
@@ -213,8 +222,12 @@ function coverClass(categoryName) {
   return 'coverDefault'
 }
 
-onBeforeUnmount(() => {
-  stopBooksSync?.()
+onMounted(async () => {
+  await loadBookDetail()
+})
+
+watch(bookId, async () => {
+  await loadBookDetail()
 })
 </script>
 
