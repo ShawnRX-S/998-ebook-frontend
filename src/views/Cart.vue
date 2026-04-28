@@ -99,27 +99,19 @@ async function checkout() {
     return
   }
 
-  const total = cartItems.reduce((sum, x) => {
-    return sum + Number(x.price) * Number(x.qty)
-  }, 0)
+  const bookIds = cartItems.map((x) => x.bookId)
 
-  const order = {
-    orderId: 'ORD-' + Date.now(),
-    time: new Date().toLocaleString(),
-    status: 'PAID',
-    items: cartItems.map((x) => ({
-      bookId: x.bookId,
-      title: x.title,
-      price: x.price,
-      qty: x.qty
-    })),
-    total: Number(total.toFixed(2))
+  try {
+    await createOrder(bookIds)
+
+    clearCart()
+    refresh()
+    alert('Order created successfully!')
+    router.push('/orders')
+  } catch (e) {
+    console.error(e)
+    alert('Order failed.')
   }
-
-  await createOrder(order)
-  clearCart()
-  refresh()
-  router.push('/orders')
 }
 </script>
 

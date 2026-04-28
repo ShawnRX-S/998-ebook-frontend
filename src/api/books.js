@@ -1,49 +1,58 @@
-import { books } from '../data/books'
+import axios from 'axios'
 
-export function getBooks(params = {}) {
-  const {
-    page = 1,
-    pageSize = 9,
-    category = 'ALL',
-    keyword = '',
-    sort = 'NONE'
-  } = params
+export async function getBooks(params = {}) {
+  const res = await axios.get('/api/books', { params })
 
-  let list = [...books]
+  const rawBooks = res.data.books || []
 
-  if (category !== 'ALL') {
-    list = list.filter((b) => b.category === category)
+  const list = rawBooks.map((b) => ({
+    id: b.id,
+    title: b.title,
+    author: b.author,
+    price: Number(b.price),
+    rating: b.rating,
+    summary: b.summary,
+    description: b.description,
+    coverText: b.coverText || b.cover_text || shortCode(b.title),
+    isPrivacyProtected: b.isPrivacyProtected === 1 || b.isPrivacyProtected === true,
+    categoryId: b.category_id,
+    category: mapCategoryName(b.category_id),
+    coverPath: b.cover_path,
+    filePath: b.file_path,
+    createdAt: b.created_at
+  }))
+
+  return {
+    list,
+    total: list.length,
+    page: Number(params.page || 1),
+    pageSize: Number(params.pageSize || 9)
   }
-
-  const k = keyword.trim().toLowerCase()
-  if (k) {
-    list = list.filter((b) => {
-      const t = (b.title || '').toLowerCase()
-      const a = (b.author || '').toLowerCase()
-      const s = (b.summary || '').toLowerCase()
-      return t.includes(k) || a.includes(k) || s.includes(k)
-    })
-  }
-
-  if (sort === 'PRICE_ASC') {
-    list.sort((x, y) => Number(x.price) - Number(y.price))
-  } else if (sort === 'PRICE_DESC') {
-    list.sort((x, y) => Number(y.price) - Number(x.price))
-  }
-
-  const total = list.length
-  const start = (Number(page) - 1) * Number(pageSize)
-  const paged = list.slice(start, start + Number(pageSize))
-
-  return Promise.resolve({
-    list: paged,
-    total,
-    page: Number(page),
-    pageSize: Number(pageSize)
-  })
 }
 
-export function getBookDetail(id) {
-  const book = books.find((b) => b.id === Number(id))
-  return Promise.resolve(book || null)
+export async function getBookDetail(id) {
+  const res = await getBooks()
+  return res.list.find((b) => b.id === Number(id)) || null
+}
+
+function shortCode(title) {
+  return String(title || '')
+    .split(' ')
+    .slice(0, 3)
+    .map((x) => x[0])
+    .join('')
+    .toUpperCase()
+}
+
+function mapCategoryName(categoryId) {
+  const map = {
+    1: 'Privacy',
+    2: 'Cryptography',
+    3: 'Security',
+    4: 'E-commerce',
+    5: 'Blockchain',
+    6: 'Systems'
+  }
+
+  return map[categoryId] || 'Book'
 }
