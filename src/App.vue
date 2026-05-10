@@ -13,10 +13,6 @@
         <nav class="nav">
           <router-link class="navLink" to="/books">Books</router-link>
           <router-link v-if="!isAdmin" class="navLink" to="/orders">Orders</router-link>
-          <router-link v-if="!isAdmin" class="navLink" to="/cart">
-            Cart
-            <span class="pill" :class="{ bump: cartBump }">{{ cartCount }}</span>
-          </router-link>
 
           <router-link
             v-if="!loggedIn"
@@ -50,10 +46,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { getCart } from './utils/cartStore'
 import {
   isAdmin as authIsAdmin,
   isLoggedIn as authIsLoggedIn,
@@ -65,40 +59,10 @@ import { Setting, UserFilled } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
-const cartCount = ref(0)
-const cartBump = ref(false)
 const loggedIn = ref(authIsLoggedIn())
 const isAdmin = ref(authIsAdmin())
 
 const isAdminRoute = computed(() => String(route.path || '').startsWith('/admin'))
-
-let timerId = null
-let bumpTimerId = null
-
-function refreshCartCount() {
-  const list = getCart()
-  cartCount.value = list.reduce((sum, x) => sum + Number(x.qty || 0), 0)
-}
-
-function playCartBump() {
-  cartBump.value = false
-
-  if (bumpTimerId) {
-    clearTimeout(bumpTimerId)
-  }
-
-  setTimeout(() => {
-    cartBump.value = true
-    bumpTimerId = setTimeout(() => {
-      cartBump.value = false
-    }, 260)
-  }, 10)
-}
-
-function handleCartUpdated() {
-  refreshCartCount()
-  playCartBump()
-}
 
 function syncAuth() {
   loggedIn.value = authIsLoggedIn()
@@ -111,18 +75,12 @@ function onLogout() {
 }
 
 onMounted(() => {
-  refreshCartCount()
   syncAuth()
 
-  timerId = setInterval(refreshCartCount, 500)
-  window.addEventListener('cart-updated', handleCartUpdated)
   window.addEventListener('auth-changed', syncAuth)
 })
 
 onUnmounted(() => {
-  if (timerId) clearInterval(timerId)
-  if (bumpTimerId) clearTimeout(bumpTimerId)
-  window.removeEventListener('cart-updated', handleCartUpdated)
   window.removeEventListener('auth-changed', syncAuth)
 })
 </script>

@@ -2,7 +2,7 @@
   <div class="container">
     <div class="pageTitle">
       <h2>Books</h2>
-      <p class="sub">Browse ebooks and simulate purchase (OT handled by backend later).</p>
+      <p class="sub">Browse ebooks and start privacy-preserving purchase through OT.</p>
     </div>
 
     <div class="filterBar card">
@@ -87,12 +87,8 @@
         <div class="actions">
           <button class="btnGhost" @click="goDetail(b.id)">View Detail</button>
 
-          <el-button v-if="!adminMode" type="success" :icon="ShoppingCart" @click="addToCart(b)">
-            Add to Cart
-          </el-button>
-
-          <el-button v-if="b.isPrivacyProtected" type="primary" @click="privacyEncryptTest(b)">
-            Privacy Encryption Test
+          <el-button v-if="!adminMode && b.isPrivacyProtected" type="primary" @click="goDetail(b.id)">
+            Privacy Purchase (OT)
           </el-button>
         </div>
       </div>
@@ -125,21 +121,13 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { ShoppingCart } from '@element-plus/icons-vue'
-import { addToCart as addToCartStore } from '../utils/cartStore'
-import { aesEncryptString } from '../utils/cryptoHelper'
-import { isAdmin, isLoggedIn } from '../utils/authStore'
+import { isAdmin } from '../utils/authStore'
 import { getBooks } from '../api/books'
 
 const router = useRouter()
 const list = ref([])
 const adminMode = isAdmin()
-
-// Demo-only passphrase for encrypting book title payloads.
-// In the real system, the secret should come from backend / key management.
-const AES_SECRET = 'ebook-privacy-demo-secret'
 
 const keyword = ref('')
 const category = ref('ALL')
@@ -179,44 +167,6 @@ const pagedList = computed(() => list.value)
 
 function goDetail(id) {
   router.push('/books/' + id)
-}
-
-function addToCart(book) {
-  if (adminMode) {
-    ElMessage.warning('Admin account cannot add items to cart')
-    return
-  }
-
-  if (!isLoggedIn()) {
-    ElMessage.warning('Please login first!')
-    router.push('/login')
-    return
-  }
-
-  addToCartStore({
-    bookId: book.id,
-    title: book.title,
-    price: book.price,
-    qty: 1
-  })
-
-  alert('Added to cart: ' + book.title)
-}
-
-function privacyEncryptTest(book) {
-  if (!book?.isPrivacyProtected) {
-    ElMessage.error('Standard Mode: Encryption is disabled for this item.')
-    return
-  }
-
-  const cipherText = aesEncryptString(book.title, AES_SECRET)
-  ElMessage({
-    type: 'success',
-    showClose: true,
-    duration: 5000,
-    // Encryption result display (demo)
-    message: `Encryption result (AES): ${cipherText}`
-  })
 }
 
 function setCategory(c) {

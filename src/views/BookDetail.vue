@@ -48,8 +48,9 @@
 
         <div class="bottomActions">
           <template v-if="!adminMode">
-            <button class="btn ctaPrimary" @click="buyNow">Buy Now (Simulated)</button>
-            <button class="btnGhost ctaSecondary" @click="addCart">Add to Cart</button>
+            <button class="btn ctaPrimary" @click="privacyPurchaseByOT">
+              Privacy Purchase (OT)
+            </button>
 
             <div class="securityInfo">
               <div class="securityTitle">Security Info</div>
@@ -121,11 +122,12 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Lock } from '@element-plus/icons-vue'
-import { addToCart as addToCartStore, clearCart } from '../utils/cartStore'
-import { createOrder } from '../api/orders'
-import { isAdmin, isLoggedIn } from '../utils/authStore'
+import { isAdmin } from '../utils/authStore'
 import { getBookDetail } from '../api/books'
 import { books } from '../data/books'
+import { createOtSession, sendOtStep, getEncryptedPackage } from '../api/ot'
+import { OTReceiver } from '../utils/otReceiver'
+import { aesGcmDecrypt } from '../utils/aesGcmDecrypt'
 
 const route = useRoute()
 const router = useRouter()
@@ -151,56 +153,82 @@ function goToBook(bookId) {
   router.push(`/books/${bookId}`)
 }
 
-function addCart() {
+async function privacyPurchaseByOT() {
   if (!book.value) return
 
-  if (adminMode) {
-    ElMessage.warning('Admin account cannot add items to cart')
+  if (!book.value.isPrivacyProtected) {
+    ElMessage.warning('This book is not marked as privacy protected.')
     return
   }
 
-  if (!isLoggedIn()) {
-    ElMessage.warning('Please login first!')
-    router.push('/login')
-    return
+  try {
+    const groupId = book.value.groupId || 'default'
+    const choiceIndex = book.value.choiceIndex
+
+    if (choiceIndex === undefined || choiceIndex === null) {
+      ElMessage.error('OT choice index is missing.')
+      return
+    }
+
+    const sessionRes = await createOtSession(groupId)
+    const session = sessionRes.data
+
+    const receiver = new OTReceiver(choiceIndex, session.l)
+
+    for (let level = 0; level < session.l; level++) {
+      const { h0, h1 } = receiver.startLevel(level)
+
+      const stepRes = await sendOtStep({
+        sessionId: session.session_id,
+        level,
+        h0,
+        h1
+      })
+
+      await receiver.finishLevel(
+        level,
+        stepRes.data.c0,
+        stepRes.data.c1,
+        stepRes.data.gy
+      )
+    }
+
+    const recoveredKey = await receiver.recoverKey(session.masked_keys)
+
+    const packageRes = await getEncryptedPackage(groupId)
+    const encryptedBooks = packageRes.data.books || []
+
+    const selectedEncryptedBook = encryptedBooks.find(
+      (x) => Number(x.index) === Number(choiceIndex)
+    )
+
+    if (!selectedEncryptedBook) {
+      ElMessage.error('Selected encrypted book was not found.')
+      return
+    }
+
+    const aesKey = recoveredKey
+
+    const ebookContent = await aesGcmDecrypt(
+      selectedEncryptedBook,
+      aesKey
+    )
+
+    downloadTextFile(selectedEncryptedBook.filename, ebookContent)
+
+    ElMessage({
+      type: 'success',
+      showClose: true,
+      duration: 6000,
+      message:
+        'OT privacy purchase completed and ebook decrypted locally. Server did not receive bookId. Key prefix: ' +
+        bytesToHex(recoveredKey).slice(0, 16)
+    })
+  } catch (e) {
+      console.error(e)
+
+      ElMessage.error('OT privacy purchase failed.')
   }
-
-  addToCartStore({
-    bookId: book.value.id,
-    title: book.value.title,
-    price: book.value.price,
-    qty: 1
-  })
-
-  alert('Added to cart: ' + book.value.title)
-}
-
-async function buyNow() {
-  if (adminMode) {
-    ElMessage.warning('Admin account cannot place purchase orders')
-    return
-  }
-
-  if (!book.value) return
-
-  const order = {
-    orderId: 'ORD-' + Date.now(),
-    time: new Date().toLocaleString(),
-    status: 'PAID',
-    items: [
-      {
-        bookId: book.value.id,
-        title: book.value.title,
-        price: book.value.price,
-        qty: 1
-      }
-    ],
-    total: Number(book.value.price)
-  }
-
-  await createOrder(order)
-  clearCart()
-  router.push('/orders')
 }
 
 function shortCode(title) {
@@ -210,6 +238,27 @@ function shortCode(title) {
     .map((x) => x[0])
     .join('')
     .toUpperCase()
+}
+
+function bytesToHex(bytes) {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+function downloadTextFile(filename, content) {
+  const blob = new Blob([content], {
+    type: 'text/plain;charset=utf-8'
+  })
+
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+
+  a.href = url
+  a.download = filename || 'ebook.txt'
+  a.click()
+
+  URL.revokeObjectURL(url)
 }
 
 function coverClass(categoryName) {

@@ -1,37 +1,72 @@
-import axios from 'axios'
+import { getOtCatalog } from './ot'
 
 export async function getBooks(params = {}) {
-  const res = await axios.get('/api/books', { params })
+  const {
+    page = 1,
+    pageSize = 9,
+    category = 'ALL',
+    keyword = '',
+    sort = 'NONE'
+  } = params
 
+  const res = await getOtCatalog('default')
   const rawBooks = res.data.books || []
 
-  const list = rawBooks.map((b) => ({
-    id: b.id,
+  let list = rawBooks.map((b) => ({
+    id: b.index + 1,
+    choiceIndex: b.index,
+    groupId: res.data.group_id || 'default',
     title: b.title,
     author: b.author,
-    price: Number(b.price),
-    rating: b.rating,
-    summary: b.summary,
-    description: b.description,
-    coverText: b.coverText || b.cover_text || shortCode(b.title),
-    isPrivacyProtected: b.isPrivacyProtected === 1 || b.isPrivacyProtected === true,
-    categoryId: b.category_id,
-    category: mapCategoryName(b.category_id),
-    coverPath: b.cover_path,
-    filePath: b.file_path,
-    createdAt: b.created_at
+    filename: b.filename,
+    price: 9.99,
+    rating: 4.5,
+    summary: 'Privacy-preserving ebook protected by OT.',
+    description: 'This ebook can be purchased through the OT privacy-preserving flow.',
+    coverText: shortCode(b.title),
+    isPrivacyProtected: true,
+    category: 'Privacy'
   }))
 
+  if (category !== 'ALL') {
+    list = list.filter((b) => b.category === category)
+  }
+
+  const k = keyword.trim().toLowerCase()
+  if (k) {
+    list = list.filter((b) => {
+      const t = (b.title || '').toLowerCase()
+      const a = (b.author || '').toLowerCase()
+      const s = (b.summary || b.description || '').toLowerCase()
+      return t.includes(k) || a.includes(k) || s.includes(k)
+    })
+  }
+
+  if (sort === 'PRICE_ASC') {
+    list.sort((x, y) => Number(x.price) - Number(y.price))
+  } else if (sort === 'PRICE_DESC') {
+    list.sort((x, y) => Number(y.price) - Number(x.price))
+  }
+
+  const total = list.length
+  const size = Number(pageSize)
+  const start = (Number(page) - 1) * size
+  const paged = list.slice(start, start + size)
+
   return {
-    list,
-    total: list.length,
-    page: Number(params.page || 1),
-    pageSize: Number(params.pageSize || 9)
+    list: paged,
+    total,
+    page: Number(page),
+    pageSize: size
   }
 }
 
 export async function getBookDetail(id) {
-  const res = await getBooks()
+  const res = await getBooks({
+    page: 1,
+    pageSize: 999
+  })
+
   return res.list.find((b) => b.id === Number(id)) || null
 }
 
@@ -42,17 +77,4 @@ function shortCode(title) {
     .map((x) => x[0])
     .join('')
     .toUpperCase()
-}
-
-function mapCategoryName(categoryId) {
-  const map = {
-    1: 'Privacy',
-    2: 'Cryptography',
-    3: 'Security',
-    4: 'E-commerce',
-    5: 'Blockchain',
-    6: 'Systems'
-  }
-
-  return map[categoryId] || 'Book'
 }

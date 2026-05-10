@@ -2,7 +2,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Books from '../views/Books.vue'
 import BookDetail from '../views/BookDetail.vue'
 import Orders from '../views/Orders.vue'
-import Cart from '../views/Cart.vue'
 import Login from '../views/Login.vue'
 import AdminPanel from '../views/AdminPanel.vue'
 import { ElMessage } from 'element-plus'
@@ -13,7 +12,6 @@ const routes = [
   { path: '/books', component: Books },
   { path: '/books/:id', component: BookDetail },
   { path: '/orders', component: Orders, meta: { requiresAuth: true } },
-  { path: '/cart', component: Cart, meta: { requiresAuth: true } },
   { path: '/login', component: Login },
   { path: '/admin', redirect: '/admin/dashboard' },
   { path: '/admin/dashboard', component: AdminPanel, meta: { requiresAuth: true, requiresRole: 'admin' } },
@@ -29,7 +27,7 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   if (isLoggedIn() && hasRole('admin')) {
-    const blockedForAdmin = new Set(['/cart', '/checkout'])
+    const blockedForAdmin = new Set(['/checkout'])
     if (blockedForAdmin.has(to.path)) {
       ElMessage.warning('Admin account cannot access purchasing pages')
       next('/admin/dashboard')
