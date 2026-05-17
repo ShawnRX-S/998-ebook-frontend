@@ -48,22 +48,26 @@
 
         <div class="bottomActions">
           <template v-if="!adminMode">
-            <button class="btn ctaPrimary" @click="privacyPurchaseByOT">
-              Privacy Purchase (OT)
+            <button
+              class="btn ctaPrimary"
+              :disabled="purchasing"
+              @click="privacyPurchaseByOT"
+            >
+              {{ purchasing ? 'Processing OT Purchase...' : 'Privacy Purchase (OT)' }}
             </button>
 
             <div class="securityInfo">
               <div class="securityTitle">Security Info</div>
               <div class="securityBody">
-                This purchase is simulated. In the final system, the backend OT module can deliver
-                your ebook while preserving user privacy (minimizing what the server learns about
-                your reading choices).
+                This purchase uses an OT-based privacy-preserving flow. The selected book choice
+                is kept locally in the browser, while the backend only processes OT protocol
+                messages and encrypted book materials.
               </div>
             </div>
 
             <div class="callout calloutSmall simNote">
-              “Buy Now” is simulated. In the final system the backend OT module will deliver the ebook
-              while preserving user privacy.
+              The selected book identifier is not sent as a normal purchase request. The ebook is
+              decrypted locally after the OT flow is completed.
             </div>
           </template>
 
@@ -123,43 +127,67 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Lock } from '@element-plus/icons-vue'
 import { isAdmin } from '../utils/authStore'
-import { getBookDetail } from '../api/books'
-import { books } from '../data/books'
-import { createOtSession, sendOtStep, getEncryptedPackage } from '../api/ot'
+import { getBookDetail, getBooks } from '../api/books'
+import {
+  createOtSession,
+  sendOtStep,
+  getEncryptedPackage,
+  clearOtSession
+} from '../api/ot'
 import { OTReceiver } from '../utils/otReceiver'
 import { aesGcmDecrypt } from '../utils/aesGcmDecrypt'
+import { addLocalOtOrder } from '../api/orders'
 
 const route = useRoute()
 const router = useRouter()
 
-const bookId = computed(() => Number(route.params.id))
+// This id is only used for frontend routing and page display.
+// It must not be used as a purchase identifier.
+const routeBookId = computed(() => Number(route.params.id))
+
 const book = ref(null)
+const allBooks = ref([])
+const purchasing = ref(false)
 const adminMode = isAdmin()
 
 async function loadBookDetail() {
-  const res = await getBookDetail(bookId.value)
+  const res = await getBookDetail(routeBookId.value)
   book.value = res
 }
 
+async function loadRecommendedBooks() {
+  const res = await getBooks({
+    page: 1,
+    pageSize: 999
+  })
+
+  allBooks.value = res.list || []
+}
+
 const recommendedBooks = computed(() => {
-  return books.filter((b) => b.id !== bookId.value).slice(0, 4)
+  return allBooks.value
+    .filter((b) => Number(b.id) !== Number(routeBookId.value))
+    .slice(0, 4)
 })
 
 function goBack() {
   router.push('/books')
 }
 
-function goToBook(bookId) {
-  router.push(`/books/${bookId}`)
+function goToBook(routeId) {
+  router.push(`/books/${routeId}`)
 }
 
 async function privacyPurchaseByOT() {
   if (!book.value) return
+  if (purchasing.value) return
 
   if (!book.value.isPrivacyProtected) {
     ElMessage.warning('This book is not marked as privacy protected.')
     return
   }
+
+  purchasing.value = true
 
   try {
     const groupId = book.value.groupId || 'default'
@@ -169,6 +197,13 @@ async function privacyPurchaseByOT() {
       ElMessage.error('OT choice index is missing.')
       return
     }
+
+    /*
+      Strict OT privacy rule:
+      The selected route id is not sent as a purchase identifier.
+      The choiceIndex is used locally by OTReceiver to generate OT messages.
+      The backend receives OT protocol messages, not the selected book identity.
+    */
 
     const sessionRes = await createOtSession(groupId)
     const session = sessionRes.data
@@ -185,59 +220,107 @@ async function privacyPurchaseByOT() {
         h1
       })
 
-      await receiver.finishLevel(
+      const selectedLevelKey = await receiver.finishLevel(
         level,
-        stepRes.data.c0,
-        stepRes.data.c1,
+        base64ToBytes(stepRes.data.c0),
+        base64ToBytes(stepRes.data.c1),
         stepRes.data.gy
       )
+
+      // console.log(
+      //   'Frontend selected OT key level',
+      //   level,
+      //   'length:',
+      //   selectedLevelKey.length,
+      //   'prefix:',
+      //   bytesToHex(selectedLevelKey).slice(0, 32)
+      // )
     }
 
-    const recoveredKey = await receiver.recoverKey(session.masked_keys)
+    const maskedKeys = session.masked_keys.map((x) => base64ToBytes(x))
+    const recoveredKey = await receiver.recoverKey(maskedKeys)
 
     const packageRes = await getEncryptedPackage(groupId)
     const encryptedBooks = packageRes.data.books || []
 
-    const selectedEncryptedBook = encryptedBooks.find(
-      (x) => Number(x.index) === Number(choiceIndex)
-    )
+    // This filtering happens locally after the encrypted package is received.
+    // It does not send the selected book identity to the backend.
+    const selectedEncryptedBook = encryptedBooks.find((x) => {
+      return Number(x.index) === Number(choiceIndex)
+    })
 
     if (!selectedEncryptedBook) {
       ElMessage.error('Selected encrypted book was not found.')
       return
     }
 
-    const aesKey = recoveredKey
+    // Debug logs: check whether the recovered AES key and encrypted book are correct.
+    // console.log('choiceIndex:', choiceIndex)
+    // console.log('recoveredKey length:', recoveredKey.length)
+    // console.log('recoveredKey prefix:', bytesToHex(recoveredKey).slice(0, 32))
+    // console.log('selected encrypted book:', selectedEncryptedBook)
 
     const ebookContent = await aesGcmDecrypt(
       selectedEncryptedBook,
-      aesKey
+      recoveredKey
     )
 
     downloadTextFile(selectedEncryptedBook.filename, ebookContent)
+
+    await addLocalOtOrder({
+      total: Number(book.value.price || 0),
+      items: [
+        {
+          groupId: book.value.groupId || 'default',
+          choiceIndex: book.value.choiceIndex,
+          title: book.value.title,
+          author: book.value.author,
+          price: Number(book.value.price || 0),
+          qty: 1
+        }
+      ]
+    })
+
+    try {
+      await clearOtSession(session.session_id)
+    } catch (e) {
+      console.warn('Failed to clear OT session:', e)
+    }
 
     ElMessage({
       type: 'success',
       showClose: true,
       duration: 6000,
       message:
-        'OT privacy purchase completed and ebook decrypted locally. Server did not receive bookId. Key prefix: ' +
+        'OT privacy purchase completed and ebook decrypted locally. The selected book identifier was not sent to the backend. Key prefix: ' +
         bytesToHex(recoveredKey).slice(0, 16)
     })
   } catch (e) {
-      console.error(e)
-
-      ElMessage.error('OT privacy purchase failed.')
+    console.error(e)
+    ElMessage.error('OT privacy purchase failed.')
+  } finally {
+    purchasing.value = false
   }
 }
 
 function shortCode(title) {
-  return title
+  return String(title || '')
     .split(' ')
     .slice(0, 3)
     .map((x) => x[0])
     .join('')
     .toUpperCase()
+}
+
+function base64ToBytes(base64) {
+  const binary = window.atob(base64)
+  const bytes = new Uint8Array(binary.length)
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+
+  return bytes
 }
 
 function bytesToHex(bytes) {
@@ -273,9 +356,10 @@ function coverClass(categoryName) {
 
 onMounted(async () => {
   await loadBookDetail()
+  await loadRecommendedBooks()
 })
 
-watch(bookId, async () => {
+watch(routeBookId, async () => {
   await loadBookDetail()
 })
 </script>
@@ -514,6 +598,11 @@ watch(bookId, async () => {
 .ctaPrimary {
   padding: 12px 14px;
   border-radius: 14px;
+}
+
+.ctaPrimary:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .ctaSecondary {

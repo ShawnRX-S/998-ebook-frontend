@@ -13,8 +13,8 @@ export async function getBooks(params = {}) {
   const rawBooks = res.data.books || []
 
   let list = rawBooks.map((b) => ({
-    id: b.index + 1,
-    choiceIndex: b.index,
+    id: Number(b.index) + 1,
+    choiceIndex: Number(b.index),
     groupId: res.data.group_id || 'default',
     title: b.title,
     author: b.author,

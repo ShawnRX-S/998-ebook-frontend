@@ -1,6 +1,5 @@
 function base64ToBytes(base64) {
-  const binary = atob(base64)
-
+  const binary = window.atob(base64)
   const bytes = new Uint8Array(binary.length)
 
   for (let i = 0; i < binary.length; i++) {
@@ -10,15 +9,38 @@ function base64ToBytes(base64) {
   return bytes
 }
 
-export async function aesGcmDecrypt(payload, keyBytes) {
-  const nonce = base64ToBytes(payload.nonce)
-  const ciphertext = base64ToBytes(payload.ciphertext)
-  const tag = base64ToBytes(payload.tag)
+function concatBytes(a, b) {
+  const result = new Uint8Array(a.length + b.length)
+  result.set(a, 0)
+  result.set(b, a.length)
+  return result
+}
 
-  const encrypted = new Uint8Array(ciphertext.length + tag.length)
+function normaliseKeyBytes(key) {
+  if (key instanceof Uint8Array) {
+    return key
+  }
 
-  encrypted.set(ciphertext)
-  encrypted.set(tag, ciphertext.length)
+  if (key instanceof ArrayBuffer) {
+    return new Uint8Array(key)
+  }
+
+  if (Array.isArray(key)) {
+    return new Uint8Array(key)
+  }
+
+  throw new Error('Invalid AES key format')
+}
+
+export async function aesGcmDecrypt(encryptedBook, aesKey) {
+  const keyBytes = normaliseKeyBytes(aesKey)
+
+  const nonce = base64ToBytes(encryptedBook.nonce)
+  const ciphertext = base64ToBytes(encryptedBook.ciphertext)
+  const tag = base64ToBytes(encryptedBook.tag)
+
+  // Web Crypto AES-GCM expects ciphertext and authentication tag together.
+  const encryptedData = concatBytes(ciphertext, tag)
 
   const cryptoKey = await window.crypto.subtle.importKey(
     'raw',
@@ -30,14 +52,16 @@ export async function aesGcmDecrypt(payload, keyBytes) {
     ['decrypt']
   )
 
-  const decrypted = await window.crypto.subtle.decrypt(
+  const plaintextBuffer = await window.crypto.subtle.decrypt(
     {
       name: 'AES-GCM',
-      iv: nonce
+      iv: nonce,
+      tagLength: 128
     },
     cryptoKey,
-    encrypted
+    encryptedData
   )
 
-  return new TextDecoder().decode(decrypted)
+  const decoder = new TextDecoder('utf-8')
+  return decoder.decode(plaintextBuffer)
 }

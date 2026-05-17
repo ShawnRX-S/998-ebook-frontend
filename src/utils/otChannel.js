@@ -44,9 +44,19 @@ export async function receiverStep3(c0Bytes, c1Bytes, gyValue, x, bit) {
     throw new Error('bit must be 0 or 1')
   }
 
-  const gy = BigInt(gyValue)
-  const k = modPow(gy, x, P)
-  const kBytes = await sha256OfBigIntDecimal(k)
+const gy = BigInt(gyValue)
+const k = modPow(gy, x, P)
+const kBytes = await sha256OfBigIntDecimal(k)
+
+console.log('Frontend receiverStep3 bit:', bit)
+console.log('Frontend shared k prefix:', k.toString().slice(0, 32))
+console.log(
+  'Frontend shared hash prefix:',
+  Array.from(kBytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 32)
+)
 
   if (bit === 0) {
     return xorBytes(c0Bytes, kBytes.slice(0, c0Bytes.length))

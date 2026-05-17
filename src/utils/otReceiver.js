@@ -1,6 +1,22 @@
-import { intToBitList, base64ToBytes, xorBytes } from './otUtils'
+import { intToBitList, xorBytes } from './otUtils'
 import { prf } from './otPrf'
 import { receiverStep1, receiverStep3 } from './otChannel'
+
+function toBytes(value) {
+  if (value instanceof Uint8Array) {
+    return value
+  }
+
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value)
+  }
+
+  if (Array.isArray(value)) {
+    return new Uint8Array(value)
+  }
+
+  throw new Error('OTReceiver expects byte arrays. Please base64-decode before calling it.')
+}
 
 export class OTReceiver {
   constructor(choiceIndex, levelCount) {
@@ -8,9 +24,9 @@ export class OTReceiver {
       throw new Error('choiceIndex must be non-negative')
     }
 
-    this.choiceIndex = choiceIndex
-    this.levelCount = levelCount
-    this.bits = intToBitList(choiceIndex, levelCount)
+    this.choiceIndex = Number(choiceIndex)
+    this.levelCount = Number(levelCount)
+    this.bits = intToBitList(this.choiceIndex, this.levelCount)
     this.selectedKeys = []
     this.pendingXByLevel = {}
   }
@@ -27,7 +43,7 @@ export class OTReceiver {
     }
   }
 
-  async finishLevel(level, c0Base64, c1Base64, gy) {
+  async finishLevel(level, c0Bytes, c1Bytes, gy) {
     if (!(level in this.pendingXByLevel)) {
       throw new Error('startLevel must be called before finishLevel')
     }
@@ -37,18 +53,21 @@ export class OTReceiver {
 
     delete this.pendingXByLevel[level]
 
-    const c0Bytes = base64ToBytes(c0Base64)
-    const c1Bytes = base64ToBytes(c1Base64)
-
-    const selectedKey = await receiverStep3(c0Bytes, c1Bytes, gy, x, bit)
+    const selectedKey = await receiverStep3(
+      toBytes(c0Bytes),
+      toBytes(c1Bytes),
+      gy,
+      x,
+      bit
+    )
 
     this.selectedKeys.push(selectedKey)
 
     return selectedKey
   }
 
-  async recoverKey(maskedKeysBase64) {
-    if (this.choiceIndex >= maskedKeysBase64.length) {
+  async recoverKey(maskedKeys) {
+    if (this.choiceIndex >= maskedKeys.length) {
       throw new Error('choiceIndex is outside maskedKeys')
     }
 
@@ -56,7 +75,7 @@ export class OTReceiver {
       throw new Error('not all OT levels have been completed')
     }
 
-    const y = base64ToBytes(maskedKeysBase64[this.choiceIndex])
+    const y = toBytes(maskedKeys[this.choiceIndex])
 
     let mask = new Uint8Array(y.length)
 

@@ -8,19 +8,28 @@
     </div>
 
     <div v-if="orders.length === 0" class="empty">
-      No orders yet. Go to Books and checkout from Cart.
+      No OT orders yet. Go to Books and complete a Privacy Purchase.
     </div>
 
     <div v-else class="orderList">
-      <div class="orderCard card" v-for="o in orders" :key="o.orderId">
+      <div
+        class="orderCard card"
+        v-for="o in orders"
+        :key="o.orderId"
+      >
         <div class="orderHeader">
           <div>
             <div class="oid">{{ o.orderId }}</div>
-            <div class="meta">Time: {{ o.time }} · Status: {{ o.status }}</div>
+            <div class="meta">
+              Time: {{ o.orderTime || o.time }} · Status: {{ o.status }}
+            </div>
           </div>
 
           <div class="right">
-            <div class="total">Total: ${{ o.total }}</div>
+            <div class="total">
+              Total: ${{ Number(o.total || 0).toFixed(2) }}
+            </div>
+
             <button class="btn" @click="toggle(o.orderId)">
               {{ openId === o.orderId ? 'Hide' : 'View' }}
             </button>
@@ -35,25 +44,41 @@
                 <th>Price</th>
                 <th>Qty</th>
                 <th>Line Total</th>
-                <th>Action</th>
+                <th>Privacy Status</th>
               </tr>
             </thead>
 
             <tbody>
-              <tr v-for="it in o.items" :key="it.bookId">
-                <td>{{ it.title }}</td>
-                <td>${{ it.price }}</td>
-                <td>{{ it.qty }}</td>
-                <td>${{ (it.price * it.qty).toFixed(2) }}</td>
+              <tr
+                v-for="it in o.items"
+                :key="orderItemKey(it)"
+              >
                 <td>
-                  <button class="btnGhost" @click="download(o, it)">Download</button>
+                  <div class="bookTitle">{{ it.title }}</div>
+                  <div class="privacyText">
+                    Purchased through the OT privacy-preserving flow.
+                  </div>
+                </td>
+
+                <td>${{ Number(it.price || 0).toFixed(2) }}</td>
+                <td>{{ Number(it.qty || 1) }}</td>
+
+                <td>
+                  ${{ (Number(it.price || 0) * Number(it.qty || 1)).toFixed(2) }}
+                </td>
+
+                <td>
+                  <span class="privacyBadge">
+                    OT Protected
+                  </span>
                 </td>
               </tr>
             </tbody>
           </table>
 
           <p class="note">
-            Note: Download is simulated. Later the backend OT module will provide the real ebook.
+            This order record is stored locally for demonstration purposes. The selected
+            book identifier is not sent to the backend as a normal order payload.
           </p>
         </div>
       </div>
@@ -82,8 +107,8 @@ function toggle(id) {
   openId.value = openId.value === id ? '' : id
 }
 
-function download(order, item) {
-  alert('Simulated download: ' + item.title + ' (Order: ' + order.orderId + ')')
+function orderItemKey(item) {
+  return `${item.groupId || 'default'}-${item.choiceIndex}`
 }
 
 onMounted(async () => {
@@ -159,5 +184,27 @@ onMounted(async () => {
   margin-top: 10px;
   color: #666;
   font-size: 13px;
+  line-height: 1.6;
+}
+
+.bookTitle {
+  font-weight: 600;
+  color: #222;
+}
+
+.privacyText {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.privacyBadge {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
 }
 </style>

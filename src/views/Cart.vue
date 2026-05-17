@@ -20,21 +20,37 @@
           </thead>
 
           <tbody>
-            <tr v-for="it in items" :key="it.bookId">
-              <td>{{ it.title }}</td>
-              <td>${{ it.price }}</td>
+            <tr
+              v-for="it in items"
+              :key="cartKey(it)"
+            >
+              <td>
+                <div class="bookTitle">{{ it.title }}</div>
+                <div class="privacyText">
+                  Local OT selection data is kept in the browser.
+                </div>
+              </td>
+
+              <td>${{ Number(it.price || 0).toFixed(2) }}</td>
+
               <td>
                 <input
                   class="qty"
                   type="number"
                   min="1"
                   :value="it.qty"
-                  @input="onQty(it.bookId, $event)"
+                  @input="onQty(it, $event)"
                 />
               </td>
-              <td>${{ (it.price * it.qty).toFixed(2) }}</td>
+
               <td>
-                <button class="btnDanger" @click="remove(it.bookId)">Remove</button>
+                ${{ (Number(it.price || 0) * Number(it.qty || 0)).toFixed(2) }}
+              </td>
+
+              <td>
+                <button class="btnDanger" @click="remove(it)">
+                  Remove
+                </button>
               </td>
             </tr>
           </tbody>
@@ -46,14 +62,21 @@
           </div>
 
           <div class="actions">
-            <button class="btnGhost" @click="clear">Clear Cart</button>
-            <button class="btn" @click="checkout">Checkout</button>
+            <button class="btnGhost" @click="clear">
+              Clear Cart
+            </button>
+
+            <button class="btn" @click="goToOtPurchase">
+              Go to OT Purchase
+            </button>
           </div>
         </div>
       </template>
 
       <p class="note">
-        Note: Checkout is simulated. Later you can connect it to backend purchase + OT.
+        Note: This cart is only a local reading list for the demo. It does not create
+        backend orders or send the selected book identifier to the server. To complete
+        a privacy-preserving purchase, open a book detail page and use Privacy Purchase (OT).
       </p>
     </div>
   </div>
@@ -62,27 +85,48 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCart, updateQty, removeItem, clearCart } from '../utils/cartStore'
-import { createOrder } from '../api/orders'
+import {
+  getCart,
+  updateQty,
+  removeItem,
+  clearCart
+} from '../utils/cartStore'
 
 const router = useRouter()
 const items = ref(getCart())
 
 const grandTotal = computed(() => {
-  return items.value.reduce((sum, x) => sum + Number(x.price) * Number(x.qty), 0)
+  return items.value.reduce((sum, x) => {
+    return sum + Number(x.price || 0) * Number(x.qty || 0)
+  }, 0)
 })
 
 function refresh() {
   items.value = getCart()
 }
 
-function onQty(bookId, e) {
-  updateQty(bookId, e.target.value)
+function cartKey(item) {
+  return `${item.groupId || 'default'}-${item.choiceIndex}`
+}
+
+function onQty(item, e) {
+  const qty = Number(e.target.value)
+
+  updateQty(
+    item.choiceIndex,
+    item.groupId || 'default',
+    qty
+  )
+
   refresh()
 }
 
-function remove(bookId) {
-  removeItem(bookId)
+function remove(item) {
+  removeItem(
+    item.choiceIndex,
+    item.groupId || 'default'
+  )
+
   refresh()
 }
 
@@ -91,27 +135,12 @@ function clear() {
   refresh()
 }
 
-async function checkout() {
-  const cartItems = getCart()
+function goToOtPurchase() {
+  alert(
+    'For the strict privacy version, please complete the purchase from the book detail page using Privacy Purchase (OT).'
+  )
 
-  if (cartItems.length === 0) {
-    alert('Your cart is empty.')
-    return
-  }
-
-  const bookIds = cartItems.map((x) => x.bookId)
-
-  try {
-    await createOrder(bookIds)
-
-    clearCart()
-    refresh()
-    alert('Order created successfully!')
-    router.push('/orders')
-  } catch (e) {
-    console.error(e)
-    alert('Order failed.')
-  }
+  router.push('/books')
 }
 </script>
 
@@ -160,5 +189,17 @@ async function checkout() {
   margin-top: 12px;
   color: #666;
   font-size: 13px;
+  line-height: 1.6;
+}
+
+.bookTitle {
+  font-weight: 600;
+  color: #222;
+}
+
+.privacyText {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
 }
 </style>

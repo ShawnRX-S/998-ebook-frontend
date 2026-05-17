@@ -6,7 +6,11 @@ function notifyCartChanged() {
 
 export function getCart() {
   const raw = localStorage.getItem(KEY)
-  if (!raw) return []
+
+  if (!raw) {
+    return []
+  }
+
   try {
     return JSON.parse(raw)
   } catch (e) {
@@ -21,15 +25,26 @@ export function saveCart(list) {
 
 export function addToCart(item) {
   const list = getCart()
+  const groupId = item.groupId || 'default'
+  const choiceIndex = Number(item.choiceIndex)
 
-  const found = list.find((x) => x.bookId === item.bookId)
+  const found = list.find((x) => {
+    return (
+      Number(x.choiceIndex) === choiceIndex &&
+      (x.groupId || 'default') === groupId
+    )
+  })
+
   if (found) {
-    found.qty = found.qty + 1
+    found.qty = Number(found.qty || 0) + 1
   } else {
     list.push({
-      bookId: item.bookId,
+      choiceIndex,
+      groupId,
       title: item.title,
-      price: item.price,
+      author: item.author,
+      price: Number(item.price || 0),
+      coverText: item.coverText,
       qty: 1
     })
   }
@@ -37,28 +52,64 @@ export function addToCart(item) {
   saveCart(list)
 }
 
-export function updateQty(bookId, qty) {
-  const list = getCart()
-  const found = list.find((x) => x.bookId === bookId)
-  if (!found) return
+export function updateQty(choiceIndex, groupId, qty) {
+  const targetChoiceIndex = Number(choiceIndex)
+  const targetGroupId = groupId || 'default'
+  const newQty = Number(qty)
 
-  const n = Number(qty)
-  if (n <= 0) {
-    const next = list.filter((x) => x.bookId !== bookId)
-    saveCart(next)
-    return
+  const list = getCart()
+  const next = []
+
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i]
+
+    const sameItem =
+      Number(item.choiceIndex) === targetChoiceIndex &&
+      (item.groupId || 'default') === targetGroupId
+
+    if (sameItem) {
+      if (newQty > 0) {
+        item.qty = newQty
+        next.push(item)
+      }
+    } else {
+      next.push(item)
+    }
   }
 
-  found.qty = n
+  saveCart(next)
+}
+
+export function removeItem(choiceIndex, groupId) {
+  const targetChoiceIndex = Number(choiceIndex)
+  const targetGroupId = groupId || 'default'
+
+  const list = getCart().filter((item) => {
+    return !(
+      Number(item.choiceIndex) === targetChoiceIndex &&
+      (item.groupId || 'default') === targetGroupId
+    )
+  })
+
   saveCart(list)
 }
 
-export function removeItem(bookId) {
-  const list = getCart().filter((x) => x.bookId !== bookId)
-  saveCart(list)
+export function removeFromCart(choiceIndex, groupId) {
+  removeItem(choiceIndex, groupId)
 }
 
 export function clearCart() {
-  localStorage.removeItem(KEY)
-  notifyCartChanged()
+  saveCart([])
+}
+
+export function getCartCount() {
+  return getCart().reduce((sum, item) => {
+    return sum + Number(item.qty || 0)
+  }, 0)
+}
+
+export function getCartTotal() {
+  return getCart().reduce((sum, item) => {
+    return sum + Number(item.price || 0) * Number(item.qty || 0)
+  }, 0)
 }
