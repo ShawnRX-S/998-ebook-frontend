@@ -97,7 +97,7 @@ class OTFlowService:
             "level": level,
             "c0": b64_encode(c0),
             "c1": b64_encode(c1),
-            "gy": gy,
+            "gy": str(gy),
         }
 
     def clear_session(self, session_id: str) -> dict[str, str]:
