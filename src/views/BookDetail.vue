@@ -226,15 +226,6 @@ async function privacyPurchaseByOT() {
         base64ToBytes(stepRes.data.c1),
         stepRes.data.gy
       )
-
-      // console.log(
-      //   'Frontend selected OT key level',
-      //   level,
-      //   'length:',
-      //   selectedLevelKey.length,
-      //   'prefix:',
-      //   bytesToHex(selectedLevelKey).slice(0, 32)
-      // )
     }
 
     const maskedKeys = session.masked_keys.map((x) => base64ToBytes(x))
